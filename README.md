@@ -66,6 +66,16 @@ Receitas e resumos, usando token:
 
 Uma receita recebe `description`, `value` e `receivedDate`. O saldo é calculado como entradas menos contas pagas; contas pendentes não são descontadas.
 
+Compras do mês e notas fiscais, usando token:
+
+- `GET /api/purchases`
+- `POST /api/purchases` (`multipart/form-data`: `supplierName`, `totalValue`, `purchaseDate` e imagem opcional `note`)
+- `GET /api/purchases/:id/note` (imagem vinculada à compra; somente o proprietário autenticado)
+- `GET /api/purchases/monthly-summary`
+- `GET /api/purchases/report`
+
+Quando enviada, a imagem deve ser JPG, PNG ou WEBP de até 8 MB e fica armazenada em uma coluna `BYTEA` do PostgreSQL. O OCR é executado no frontend apenas para sugerir fornecedor, data e valor; os campos enviados à API devem ser conferidos pelo usuário. As compras continuam registradas no fluxo mensal como despesa.
+
 ## Organização
 
 - `src/server.js`: inicialização do banco e servidor HTTP.
@@ -80,4 +90,5 @@ Uma receita recebe `description`, `value` e `receivedDate`. O saldo é calculado
 - Senhas são armazenadas com hash bcrypt.
 - Tokens JWT expiram em 8 horas.
 - Rotas financeiras filtram os dados pelo usuário autenticado.
+- A imagem da nota é retornada somente ao usuário proprietário da compra e não é armazenada em cache pelo navegador.
 - O pagamento usa transação e bloqueio da conta para evitar pagamento duplicado ou corrida de saldo.

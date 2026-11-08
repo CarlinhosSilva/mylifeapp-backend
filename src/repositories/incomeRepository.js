@@ -51,15 +51,18 @@ export async function getBalanceByUser(userId) {
   const result = await pool.query(
     `SELECT
        COALESCE((SELECT SUM(value) FROM income WHERE user_id = $1), 0) AS incomes,
-       COALESCE((SELECT SUM(value) FROM account WHERE user_id = $1 AND paid = TRUE), 0) AS expenses`,
+       COALESCE((SELECT SUM(value) FROM account WHERE user_id = $1 AND paid = TRUE), 0) AS expenses,
+       COALESCE((SELECT SUM(total_value) FROM purchase WHERE user_id = $1), 0) AS purchases`,
     [userId],
   )
 
-  const { incomes, expenses } = result.rows[0]
+  const { incomes, expenses, purchases } = result.rows[0]
+  const totalExpenses = Number(expenses) + Number(purchases)
+
   return {
     incomes: Number(incomes),
-    expenses: Number(expenses),
-    balance: Number(incomes) - Number(expenses),
+    expenses: totalExpenses,
+    balance: Number(incomes) - totalExpenses,
   }
 }
 
@@ -83,7 +86,12 @@ export async function getCurrentMonthSummary(userId) {
          SELECT SUM(a.value)
          FROM account a
          WHERE a.user_id = $1 AND a.paid = TRUE AND a.payment_date = days.day
-       ), 0) AS expenses,
+       ), 0) AS account_expenses,
+       COALESCE((
+         SELECT SUM(p.total_value)
+         FROM purchase p
+         WHERE p.user_id = $1 AND p.purchase_date = days.day
+       ), 0) AS purchase_expenses,
        COALESCE((
          SELECT SUM(a.value)
          FROM account a
@@ -97,7 +105,7 @@ export async function getCurrentMonthSummary(userId) {
   return result.rows.map(row => ({
     day: row.day,
     incomes: Number(row.incomes),
-    expenses: Number(row.expenses),
+    expenses: Number(row.account_expenses) + Number(row.purchase_expenses),
     pending: Number(row.pending) || 0,
   }))
 }
@@ -122,7 +130,8 @@ export async function getFamilySummary() {
     pool.query(`
       SELECT
         COALESCE((SELECT SUM(value) FROM income), 0) AS incomes,
-        COALESCE((SELECT SUM(value) FROM account WHERE paid = TRUE), 0) AS expenses`),
+        COALESCE((SELECT SUM(value) FROM account WHERE paid = TRUE), 0) AS account_expenses,
+        COALESCE((SELECT SUM(total_value) FROM purchase), 0) AS purchase_expenses`),
     pool.query(`
       WITH days AS (
         SELECT generate_series(
@@ -134,8 +143,9 @@ export async function getFamilySummary() {
       SELECT
         TO_CHAR(days.day, 'DD') AS day,
         COALESCE((SELECT SUM(value) FROM income WHERE received_date = days.day), 0) AS incomes,
-        COALESCE((SELECT SUM(value) FROM account WHERE paid = TRUE AND payment_date = days.day), 0) AS expenses
-        , COALESCE((SELECT SUM(value) FROM account WHERE COALESCE(paid, FALSE) = FALSE AND due_date = days.day), 0) AS pending
+        COALESCE((SELECT SUM(value) FROM account WHERE paid = TRUE AND payment_date = days.day), 0) AS account_expenses,
+        COALESCE((SELECT SUM(total_value) FROM purchase WHERE purchase_date = days.day), 0) AS purchase_expenses,
+        COALESCE((SELECT SUM(value) FROM account WHERE COALESCE(paid, FALSE) = FALSE AND due_date = days.day), 0) AS pending
       FROM days
       ORDER BY days.day`),
     pool.query(`
@@ -144,7 +154,9 @@ export async function getFamilySummary() {
       WHERE COALESCE(paid, FALSE) = FALSE AND due_date < CURRENT_DATE`),
   ])
 
-  const { incomes, expenses } = balanceResult.rows[0]
+  const { incomes, account_expenses, purchase_expenses } = balanceResult.rows[0]
+  const totalExpenses = Number(account_expenses) + Number(purchase_expenses)
+
   return {
     transactions: transactionsResult.rows.map(row => ({
       id: row.id,
@@ -156,12 +168,12 @@ export async function getFamilySummary() {
       paymentMethod: row.payment_method,
     })),
     incomes: Number(incomes),
-    expenses: Number(expenses),
-    balance: Number(incomes) - Number(expenses),
+    expenses: totalExpenses,
+    balance: Number(incomes) - totalExpenses,
     monthlySummary: monthlyResult.rows.map(row => ({
       day: row.day,
       incomes: Number(row.incomes),
-      expenses: Number(row.expenses),
+      expenses: Number(row.account_expenses) + Number(row.purchase_expenses),
       pending: Number(row.pending) || 0,
     })),
     overdueAccounts: Number(statusResult.rows[0].overdue),

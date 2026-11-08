@@ -185,6 +185,67 @@ export async function initializeDatabase() {
       ON income(user_id)
     `)
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+        user_id ${userIdType} NOT NULL REFERENCES users(id),
+
+        supplier_name VARCHAR(200) NOT NULL,
+
+        total_value NUMERIC(12,2) NOT NULL,
+
+        purchase_date DATE NOT NULL,
+
+        note_text TEXT,
+
+        raw_text TEXT,
+
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `)
+
+    await client.query(`
+      ALTER TABLE purchase
+      ADD COLUMN IF NOT EXISTS note_image BYTEA,
+      ADD COLUMN IF NOT EXISTS note_image_mime VARCHAR(100)
+    `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_item (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+        purchase_id UUID NOT NULL REFERENCES purchase(id) ON DELETE CASCADE,
+
+        description VARCHAR(200) NOT NULL,
+
+        quantity NUMERIC(12,2),
+
+        unit_price NUMERIC(12,2),
+
+        total_value NUMERIC(12,2),
+
+        position INTEGER NOT NULL DEFAULT 0,
+
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `)
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_purchase_user_id
+      ON purchase(user_id)
+    `)
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_purchase_date
+      ON purchase(purchase_date)
+    `)
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_purchase_item_purchase_id
+      ON purchase_item(purchase_id)
+    `)
+
     // ===========================
     // CATEGORIAS PADRÃO
     // ===========================
